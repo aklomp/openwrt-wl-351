@@ -14,6 +14,9 @@ make target/linux/clean
 # Copy config:
 cp ../config .config
 
+# Copy root filesystem:
+rsync -avz ../root/ ./files
+
 # Apply patches:
 for i in ../patches/*; do
 	patch -p1 < "$i"
