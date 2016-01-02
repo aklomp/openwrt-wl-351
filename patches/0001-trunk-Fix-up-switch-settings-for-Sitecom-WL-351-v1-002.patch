@@ -1,0 +1,73 @@
+From 1910cc477b71b6ea340218c8bf8fb1bd30214780 Mon Sep 17 00:00:00 2001
+From: Tobias Diedrich <ranma+openwrt@tdiedrich.de>
+Date: Sun, 13 Sep 2015 14:36:31 +0200
+Subject: [PATCH] Fix up switch settings for Sitecom WL-351 v1 002
+
+Pinmux for rgmii needs to be set to rgmii, not gpio.
+Hide the ESW switch on boot (using new rgmii esw devicetree attribute).
+Also add a Sitecom-specific profile, since the image needs to include
+the rtl8366 kernel driver.
+
+Signed-off-by: Tobias Diedrich <ranma+openwrt@tdiedrich.de>
+---
+ target/linux/ramips/dts/WL-351.dts                     |  7 ++++++-
+ .../files/drivers/net/ethernet/ralink/esw_rt3052.c     | 13 +++++++++++++
+ target/linux/ramips/image/Makefile                     |  1 -
+ target/linux/ramips/rt305x/profiles/sitecom.mk         | 18 ++++++++++++++++++
+ 4 files changed, 37 insertions(+), 2 deletions(-)
+ create mode 100644 target/linux/ramips/rt305x/profiles/sitecom.mk
+
+diff --git a/target/linux/ramips/dts/WL-351.dts b/target/linux/ramips/dts/WL-351.dts
+index 81c963b..89c1ae5 100644
+--- a/target/linux/ramips/dts/WL-351.dts
++++ b/target/linux/ramips/dts/WL-351.dts
+@@ -9,9 +9,13 @@
+ 	pinctrl {
+ 		state_default: pinctrl0 {
+ 			gpio {
+-				ralink,group = "spi", "i2c", "jtag", "rgmii", "mdio", "uartf";
++				ralink,group = "spi", "i2c", "jtag", "mdio", "uartf";
+ 				ralink,function = "gpio";
+ 			};
++			rgmii {
++				ralink,group = "rgmii";
++				ralink,function = "rgmii";
++			};
+ 		};
+ 	};
+ 
+@@ -52,6 +56,7 @@
+ 	};
+ 
+ 	esw@10110000 {
++		ralink,rgmii = <1>;
+ 		ralink,portmap = <0x3f>;
+ 		ralink,fct2 = <0x0002500c>;
+ 		/*
+diff --git a/target/linux/ramips/files/drivers/net/ethernet/ralink/esw_rt3052.c b/target/linux/ramips/files/drivers/net/ethernet/ralink/esw_rt3052.c
+index 55d5729..1f89838 100644
+--- a/target/linux/ramips/files/drivers/net/ethernet/ralink/esw_rt3052.c
++++ b/target/linux/ramips/files/drivers/net/ethernet/ralink/esw_rt3052.c
+@@ -1454,6 +1454,19 @@ static int esw_probe(struct platform_device *pdev)
+ 
+ 	esw_hw_init(esw);
+ 
++	reg_init = of_get_property(np, "ralink,rgmii", NULL);
++	if (reg_init && be32_to_cpu(*reg_init) == 1) {
++		/*
++		 * External switch connected to RGMII interface.
++		 * Unregister the switch device after initialization.
++		 */
++		err = -ENODEV;
++		dev_err(&pdev->dev, "RGMII mode, not exporting switch device.\n");
++		unregister_switch(&esw->swdev);
++		platform_set_drvdata(pdev, NULL);
++		goto unmap_base;
++	}
++
+ 	esw_w32(esw, RT305X_ESW_PORT_ST_CHG, RT305X_ESW_REG_ISR);
+ 	esw_w32(esw, ~RT305X_ESW_PORT_ST_CHG, RT305X_ESW_REG_IMR);
+ 	request_irq(esw->irq, esw_interrupt, 0, "esw", esw);
+-- 
+2.1.4
+
